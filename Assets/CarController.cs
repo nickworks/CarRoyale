@@ -17,15 +17,20 @@ public class CarController : MonoBehaviour {
     Vector3 contactNormal = Vector3.zero;
     float airTorqueMultiplier = 40;
 
+    public Transform steering;
+
 	void Start () {
         body = GetComponent<Rigidbody>();
         box = GetComponent<BoxCollider>();
 	}
 	
-	void FixedUpdate () {
+	void FixedUpdate ()
+    {
         float h = Input.GetAxis("Horizontal");
         float v = Input.GetAxis("Vertical");
         float t = Input.GetAxis("Throttle");
+
+        TurnWheels(h);
 
         if (isGrounded)
         {
@@ -45,11 +50,20 @@ public class CarController : MonoBehaviour {
                 RotateYaw(h * Time.deltaTime);
             }
         }
-        
+
         Raycast();
         RollToSurface();
 
     }
+
+    private void TurnWheels(float h)
+    {
+        //steering.Rotate(0, 10 * h * Time.deltaTime, 0);
+        
+        Quaternion b = Quaternion.Euler(0, h * 30, 0);
+        steering.localRotation = Quaternion.Slerp(steering.localRotation, b, Time.deltaTime * 10);
+    }
+
     void Jump()
     {
         if (Input.GetButtonDown("Jump"))
@@ -64,8 +78,8 @@ public class CarController : MonoBehaviour {
         float percent = mag / maxSpeed;
         percent = Mathf.Clamp(percent, 0, 1);
         float multiplier = throttleFalloff.Evaluate(percent);
-        body.AddRelativeForce(new Vector3(0, 0, amount) * multiplier);
-        
+        body.AddRelativeForce(steering.forward * amount * multiplier);
+        transform.rotation = Quaternion.Slerp(transform.rotation, steering.rotation, amount * multiplier * .1f);
     }
     void Steer()
     {
