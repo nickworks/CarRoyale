@@ -11,10 +11,10 @@ public class CarController : MonoBehaviour {
     float maxSpeed = 50;
     float throttleAmount = 4000;
     float frictionMultiplier = 2;
-    Vector3 targetUp = Vector3.up;
-    int contactPoints = 0;
+
     bool isGrounded = false;
-    Vector3 normalAverage = Vector3.zero;
+    Vector3 raycastNormal = Vector3.zero;
+    Vector3 contactNormal = Vector3.zero;
     float airTorqueMultiplier = 40;
 
 	void Start () {
@@ -25,19 +25,30 @@ public class CarController : MonoBehaviour {
 	void FixedUpdate () {
         float h = Input.GetAxis("Horizontal");
         float v = Input.GetAxis("Vertical");
-        float t = -Input.GetAxis("Throttle");
+        float t = Input.GetAxis("Throttle");
 
-        Accelerate(t * Time.deltaTime * throttleAmount);
-
-        RotateYaw(h * Time.deltaTime);
-        RotatePitch(v * Time.deltaTime);
-        //RotateRoll(-h * Time.deltaTime);
+        if (isGrounded)
+        {
+            Accelerate(t * Time.deltaTime * throttleAmount);
+            Jump();
+            ApplyWheelFriction();
+        }
+        else
+        {
+            RotatePitch(v * Time.deltaTime);
+            if (Input.GetAxis("Slide") > .1f)
+            {
+                RotateRoll(-h * Time.deltaTime);
+            }
+            else
+            {
+                RotateYaw(h * Time.deltaTime);
+            }
+        }
+        
         Raycast();
-        Jump();
-        ApplyWheelFriction();
         RollToSurface();
-        //Debug.DrawRay(transform.position, targetUp);
-        //print(contactPoints);
+
     }
     void Jump()
     {
@@ -76,28 +87,14 @@ public class CarController : MonoBehaviour {
     void OnCollisionStay(Collision collisionInfo)
     {
         Vector3 avg = Vector3.zero;
-        foreach (ContactPoint pt in collisionInfo.contacts) {
-            //Debug.DrawRay(pt.point, pt.normal * 3);
+        foreach (ContactPoint pt in collisionInfo.contacts)
+        {
+            Debug.DrawRay(pt.point, pt.normal * .3f);
             avg += pt.normal;
         }
         avg /= collisionInfo.contacts.Length;
-
-        targetUp += avg;
-        targetUp /= 2;
-
-
-        //Debug.DrawRay(transform.position, avg * 2, Color.red);
-        
-    }
-    void OnCollisionEnter(Collision collisionInfo)
-    {
-        contactPoints += collisionInfo.contacts.Length;
-        //print("enter");
-    }
-    void OnCollisionExit(Collision collisionInfo)
-    {
-        contactPoints -= collisionInfo.contacts.Length;
-        //print("exit");
+        Debug.DrawLine(transform.position, transform.position + avg, Color.red);
+        contactNormal = avg;
     }
     void ApplyWheelFriction()
     {
@@ -140,11 +137,11 @@ public class CarController : MonoBehaviour {
          && Physics.Raycast(pt4, dir, out hit4, disToGround))
         {
             isGrounded = true;
-            normalAverage = (hit1.normal + hit2.normal + hit3.normal + hit4.normal)/4;
+            raycastNormal = (hit1.normal + hit2.normal + hit3.normal + hit4.normal)/4;
         } else
         {
             isGrounded = false;
-            print("derp?");
+            //print("derp?");
         }
     }
     void RollToSurface()
@@ -153,9 +150,15 @@ public class CarController : MonoBehaviour {
         // add a torque to roll so that the vehicle's up direction aligns with surface normals
         if (isGrounded)
         {
-            Vector3 res = Vector3.Cross(transform.up, normalAverage);
+            Vector3 res = Vector3.Cross(transform.up, raycastNormal);
             body.AddTorque(res * Time.deltaTime * 50, ForceMode.Force);
-            Debug.DrawLine(transform.position, transform.position + normalAverage, Color.red);
+            //Debug.DrawLine(transform.position, transform.position + normalAverage, Color.red);
+        }
+        else if(contactNormal.sqrMagnitude > 0)
+        {
+            Vector3 res = Vector3.Cross(transform.up, contactNormal);
+            body.AddTorque(res * Time.deltaTime * 5000, ForceMode.Force);
+            contactNormal = Vector3.zero;
         }
     }
 }
