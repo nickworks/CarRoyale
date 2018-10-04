@@ -8,8 +8,8 @@ public class CarController : MonoBehaviour {
     public AnimationCurve throttleFalloff;
     Rigidbody body;
     BoxCollider box;
-    float maxSpeed = 50;
-    float throttleAmount = 4000;
+    float maxSpeed = 1;
+    float throttleAmount = 16000;
     float frictionMultiplier = 2;
 
     bool isGrounded = false;
@@ -17,9 +17,26 @@ public class CarController : MonoBehaviour {
     Vector3 contactNormal = Vector3.zero;
     float airTorqueMultiplier = 40;
 
+    float turnAmt = 0;
+
     public Transform steering;
 
-	void Start () {
+    public Vector2 wheelSpacing = new Vector2(.4f, .75f);
+    public Transform wheel1;
+    public Transform wheel2;
+    public Transform wheel3;
+    public Transform wheel4;
+
+    void OnValidate()
+    {
+        Vector2 w = wheelSpacing;
+        wheel1.localPosition = new Vector3(-w.x, 0, w.y);
+        wheel2.localPosition = new Vector3( w.x, 0, w.y);
+        wheel3.localPosition = new Vector3(-w.x, 0, -w.y);
+        wheel4.localPosition = new Vector3( w.x, 0, -w.y);
+    }
+
+    void Start () {
         body = GetComponent<Rigidbody>();
         box = GetComponent<BoxCollider>();
 	}
@@ -34,9 +51,22 @@ public class CarController : MonoBehaviour {
 
         if (isGrounded)
         {
-            Accelerate(t * Time.deltaTime * throttleAmount);
+
+            float percent = body.velocity.magnitude / maxSpeed;
+            percent = Mathf.Clamp(percent, 0, 1);
+            float throttle = throttleFalloff.Evaluate(percent);
+            throttle *= t * throttleAmount * Time.deltaTime;
+
+            Accelerate(wheel1, t);
+            Accelerate(wheel2, t);
+            Accelerate(wheel3, t);
+            Accelerate(wheel4, t);
             Jump();
-            ApplyWheelFriction();
+            
+            ApplyWheelFriction(wheel1);
+            ApplyWheelFriction(wheel2);
+            ApplyWheelFriction(wheel3);
+            ApplyWheelFriction(wheel4);
         }
         else
         {
@@ -59,9 +89,10 @@ public class CarController : MonoBehaviour {
     private void TurnWheels(float h)
     {
         //steering.Rotate(0, 10 * h * Time.deltaTime, 0);
-        
-        Quaternion b = Quaternion.Euler(0, h * 30, 0);
+        turnAmt = h * 20;
+        Quaternion b = Quaternion.Euler(0, turnAmt, 0);
         steering.localRotation = Quaternion.Slerp(steering.localRotation, b, Time.deltaTime * 10);
+        wheel2.localRotation = wheel1.localRotation = steering.localRotation;
     }
 
     void Jump()
@@ -71,15 +102,9 @@ public class CarController : MonoBehaviour {
             body.velocity += Vector3.up * 10;
         }
     }
-    void Accelerate(float amount)
+    void Accelerate(Transform tire, float throttle)
     {
-
-        float mag = body.velocity.magnitude;
-        float percent = mag / maxSpeed;
-        percent = Mathf.Clamp(percent, 0, 1);
-        float multiplier = throttleFalloff.Evaluate(percent);
-        body.AddRelativeForce(steering.forward * amount * multiplier);
-        transform.rotation = Quaternion.Slerp(transform.rotation, steering.rotation, amount * multiplier * .1f);
+        body.AddForceAtPosition(tire.forward * throttle, tire.position, ForceMode.Acceleration);
     }
     void Steer()
     {
@@ -110,17 +135,37 @@ public class CarController : MonoBehaviour {
         Debug.DrawLine(transform.position, transform.position + avg, Color.red);
         contactNormal = avg;
     }
-    void ApplyWheelFriction()
+    void ApplyWheelFriction(Transform tire)
     {
-        
-        float ratio = Vector3.Dot(body.velocity, transform.forward);
-        float friction = ratio;
-        body.AddForce(-body.velocity * friction * Time.deltaTime * frictionMultiplier);
+        // NO LONGITUDINAL FRICTION
+
+        // LATERAL FRICTION:
+
+        Vector3 localVelocity = tire.InverseTransformDirection(body.velocity);
+
+        // look at speed of tire (in world space?)
         // ratio = sidespeed / (sidespeed + forwardspeed)
-        // slidefriction = curve(ratio)
+        float bottom = (localVelocity.x + localVelocity.z);
+        if (bottom == 0) return;
+
+        float ratio = localVelocity.x / bottom;
+        // (0 means the wheel is going forward, 1 means its going sideways)
+        // slidefriction = curve(ratio) (values: 1 -> .2 | 0 -> 1)
+        float slidefriction = Mathf.Lerp(1, .2f, ratio);
+
+        // NO SLIPPING DOWN SLOPES:
         // groundfriction = curve(groundnormal.z)
         // friction = slidefriction * groundfriction
-        // impulse = constraint * friction
+        float friction = slidefriction;
+        // impulse = constant * friction
+        // apply to "wheel"
+        // apply friction force aligned with center of mass
+
+        Vector3 force = -body.velocity / 4; // FIXME: find forces necessary to bring car to a stop (position and rotational velocity)
+        
+
+        body.AddForceAtPosition(force * friction * Time.deltaTime, tire.position, ForceMode.Acceleration);
+
     }
     void Raycast()
     {
