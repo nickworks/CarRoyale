@@ -8,9 +8,9 @@ public class CarController : MonoBehaviour {
     public AnimationCurve throttleFalloff;
     Rigidbody body;
     BoxCollider box;
-    float maxSpeed = 1;
-    float throttleAmount = 16000;
-    float frictionMultiplier = 2;
+    public float maxSpeed = 1;
+    public float throttleAmount = 32000;
+    public AnimationCurve frictionFalloff;
 
     bool isGrounded = false;
     Vector3 raycastNormal = Vector3.zero;
@@ -21,11 +21,13 @@ public class CarController : MonoBehaviour {
 
     public Transform steering;
 
+    public float wheelMaxTurn = 20;
     public Vector2 wheelSpacing = new Vector2(.4f, .75f);
     public Transform wheel1;
     public Transform wheel2;
     public Transform wheel3;
     public Transform wheel4;
+    public bool turnOffFriction = false;
 
     void OnValidate()
     {
@@ -62,11 +64,17 @@ public class CarController : MonoBehaviour {
             Accelerate(wheel3, t);
             Accelerate(wheel4, t);
             Jump();
-            
-            ApplyWheelFriction(wheel1);
-            ApplyWheelFriction(wheel2);
-            ApplyWheelFriction(wheel3);
-            ApplyWheelFriction(wheel4);
+            if (!turnOffFriction)
+            {
+                Vector3 stoppingForce = -body.velocity / 4;
+                Vector3 localAngularVelocity = transform.InverseTransformVector(body.angularVelocity);
+                float stoppingTorque = localAngularVelocity.y / 4;
+
+                ApplyWheelFriction(wheel1, stoppingForce, stoppingTorque);
+                ApplyWheelFriction(wheel2, stoppingForce, stoppingTorque);
+                ApplyWheelFriction(wheel3, stoppingForce, stoppingTorque);
+                ApplyWheelFriction(wheel4, stoppingForce, stoppingTorque);
+            }
         }
         else
         {
@@ -89,7 +97,7 @@ public class CarController : MonoBehaviour {
     private void TurnWheels(float h)
     {
         //steering.Rotate(0, 10 * h * Time.deltaTime, 0);
-        turnAmt = h * 20;
+        turnAmt = h * wheelMaxTurn;
         Quaternion b = Quaternion.Euler(0, turnAmt, 0);
         steering.localRotation = Quaternion.Slerp(steering.localRotation, b, Time.deltaTime * 10);
         wheel2.localRotation = wheel1.localRotation = steering.localRotation;
@@ -135,7 +143,7 @@ public class CarController : MonoBehaviour {
         Debug.DrawLine(transform.position, transform.position + avg, Color.red);
         contactNormal = avg;
     }
-    void ApplyWheelFriction(Transform tire)
+    void ApplyWheelFriction(Transform tire, Vector3 stoppingForce, float stoppingTorque)
     {
         // NO LONGITUDINAL FRICTION
 
@@ -151,7 +159,7 @@ public class CarController : MonoBehaviour {
         float ratio = localVelocity.x / bottom;
         // (0 means the wheel is going forward, 1 means its going sideways)
         // slidefriction = curve(ratio) (values: 1 -> .2 | 0 -> 1)
-        float slidefriction = Mathf.Lerp(1, .2f, ratio);
+        float slidefriction = frictionFalloff.Evaluate(ratio);
 
         // NO SLIPPING DOWN SLOPES:
         // groundfriction = curve(groundnormal.z)
@@ -161,10 +169,15 @@ public class CarController : MonoBehaviour {
         // apply to "wheel"
         // apply friction force aligned with center of mass
 
-        Vector3 force = -body.velocity / 4; // FIXME: find forces necessary to bring car to a stop (position and rotational velocity)
-        
+        // find direction to apply torque-force:
+        Vector3 center = transform.position + body.centerOfMass;
+        Vector3 torqueDir = Vector3.Cross(transform.up, (center - tire.position).normalized);
 
-        body.AddForceAtPosition(force * friction * Time.deltaTime, tire.position, ForceMode.Acceleration);
+        // add stopping force and stopping torque-force:
+        Vector3 combinedForces = (stoppingTorque * torqueDir + stoppingForce);
+
+        // try to stop spinning:
+        body.AddForceAtPosition(combinedForces * friction * Time.deltaTime, tire.position, ForceMode.Impulse);
 
     }
     void Raycast()
