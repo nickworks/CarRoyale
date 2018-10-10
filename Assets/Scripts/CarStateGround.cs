@@ -7,9 +7,16 @@ public class CarStateGround : CarState {
 
     override public CarState Update()
     {
-        Debug.Log("tock");
+        float t = Input.GetAxis("Throttle");
+        float throttle = controller.GetThrottleFalloff();
 
-        // PUT BEHAVIOR HERE!!!
+        controller.Accelerate(throttle * t * Time.deltaTime);
+        controller.Jump();
+
+        if (!controller.turnOffFriction)
+        {
+            //controller.ApplyWheelFriction();
+        }
 
         // PUT TRANSITIONS HERE!!!
 

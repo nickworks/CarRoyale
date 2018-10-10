@@ -6,16 +6,16 @@ public class CarController : MonoBehaviour {
 
 
     public AnimationCurve throttleFalloff;
-    Rigidbody body;
-    BoxCollider box;
+    public Rigidbody body { get; private set; }
+    public BoxCollider box { get; private set; }
     public float maxSpeed = 1;
-    public float throttleAmount = 32000;
+    public float throttleAmount = 3000;
     public AnimationCurve frictionFalloff;
 
     bool isGrounded = false;
     Vector3 raycastNormal = Vector3.zero;
     Vector3 contactNormal = Vector3.zero;
-    float airTorqueMultiplier = 40;
+    public float airTorqueMultiplier = 40;
 
     float turnAmt = 0;
 
@@ -28,7 +28,6 @@ public class CarController : MonoBehaviour {
     public Transform wheel3;
     public Transform wheel4;
     public bool turnOffFriction = false;
-
 
     private CarState carState;
 
@@ -50,59 +49,17 @@ public class CarController : MonoBehaviour {
 	
 	void FixedUpdate ()
     {
-        float h = Input.GetAxis("Horizontal");
-        float v = Input.GetAxis("Vertical");
-        float t = Input.GetAxis("Throttle");
+
+        TurnWheels();
 
         if (carState != null)
         {
             CarState newState = carState.Update();
             SwitchCarState(newState);
         }
-
-        TurnWheels(h);
-
-        if (isGrounded)
-        {
-
-            float percent = body.velocity.magnitude / maxSpeed;
-            percent = Mathf.Clamp(percent, 0, 1);
-            float throttle = throttleFalloff.Evaluate(percent);
-            throttle *= t * throttleAmount * Time.deltaTime;
-
-            Accelerate(wheel1, t);
-            Accelerate(wheel2, t);
-            Accelerate(wheel3, t);
-            Accelerate(wheel4, t);
-            Jump();
-            if (!turnOffFriction)
-            {
-                Vector3 stoppingForce = -body.velocity / 4;
-                Vector3 localAngularVelocity = transform.InverseTransformVector(body.angularVelocity);
-                float stoppingTorque = localAngularVelocity.y / 4;
-
-                ApplyWheelFriction(wheel1, stoppingForce, stoppingTorque);
-                ApplyWheelFriction(wheel2, stoppingForce, stoppingTorque);
-                ApplyWheelFriction(wheel3, stoppingForce, stoppingTorque);
-                ApplyWheelFriction(wheel4, stoppingForce, stoppingTorque);
-            }
-        }
-        else
-        {
-            RotatePitch(v * Time.deltaTime);
-            if (Input.GetAxis("Slide") > .1f)
-            {
-                RotateRoll(-h * Time.deltaTime);
-            }
-            else
-            {
-                RotateYaw(h * Time.deltaTime);
-            }
-        }
-
+        
         Raycast();
-        RollToSurface();
-
+        //RollToSurface();
     }
 
     private void SwitchCarState(CarState newState)
@@ -113,43 +70,34 @@ public class CarController : MonoBehaviour {
         carState.OnBegin(this);
     }
 
-    private void TurnWheels(float h)
+    private void TurnWheels()
     {
-        //steering.Rotate(0, 10 * h * Time.deltaTime, 0);
+        float h = Input.GetAxis("Horizontal");
         turnAmt = h * wheelMaxTurn;
         Quaternion b = Quaternion.Euler(0, turnAmt, 0);
         steering.localRotation = Quaternion.Slerp(steering.localRotation, b, Time.deltaTime * 10);
         wheel2.localRotation = wheel1.localRotation = steering.localRotation;
     }
 
-    void Jump()
+    public void Jump()
     {
         if (Input.GetButtonDown("Jump"))
         {
             body.velocity += Vector3.up * 10;
         }
     }
-    void Accelerate(Transform tire, float throttle)
+    public void Accelerate(float forceAmount)
     {
-        body.AddForceAtPosition(tire.forward * throttle, tire.position, ForceMode.Acceleration);
+        Accelerate(wheel1, forceAmount);
+        Accelerate(wheel2, forceAmount);
+        Accelerate(wheel3, forceAmount);
+        Accelerate(wheel4, forceAmount);
     }
-    void Steer()
+    public void Accelerate(Transform tire, float forceAmount)
     {
-        float h = Input.GetAxis("Horizontal");
-
+        body.AddForceAtPosition(tire.forward * forceAmount, tire.position, ForceMode.Acceleration);
     }
-    void RotateYaw(float amount)
-    {
-        body.AddRelativeTorque(Vector3.up * amount * airTorqueMultiplier);
-    }
-    void RotatePitch(float amount)
-    {
-        body.AddRelativeTorque(Vector3.right * amount * airTorqueMultiplier);
-    }
-    void RotateRoll(float amount)
-    {
-        body.AddRelativeTorque(Vector3.forward * amount * airTorqueMultiplier);
-    }
+    
     void OnCollisionStay(Collision collisionInfo)
     {
         Vector3 avg = Vector3.zero;
@@ -161,6 +109,17 @@ public class CarController : MonoBehaviour {
         avg /= collisionInfo.contacts.Length;
         Debug.DrawLine(transform.position, transform.position + avg, Color.red);
         contactNormal = avg;
+    }
+    public void ApplyWheelFriction()
+    {
+        Vector3 stoppingForce = -body.velocity / 4;
+        Vector3 localAngularVelocity = transform.InverseTransformVector(body.angularVelocity);
+        float stoppingTorque = localAngularVelocity.y / 4;
+
+        ApplyWheelFriction(wheel1, stoppingForce, stoppingTorque);
+        ApplyWheelFriction(wheel2, stoppingForce, stoppingTorque);
+        ApplyWheelFriction(wheel3, stoppingForce, stoppingTorque);
+        ApplyWheelFriction(wheel4, stoppingForce, stoppingTorque);
     }
     void ApplyWheelFriction(Transform tire, Vector3 stoppingForce, float stoppingTorque)
     {
@@ -197,7 +156,6 @@ public class CarController : MonoBehaviour {
 
         // try to stop spinning:
         body.AddForceAtPosition(combinedForces * friction * Time.deltaTime, tire.position, ForceMode.Impulse);
-
     }
     void Raycast()
     {
@@ -251,5 +209,11 @@ public class CarController : MonoBehaviour {
             body.AddTorque(res * Time.deltaTime * 5000, ForceMode.Force);
             contactNormal = Vector3.zero;
         }
+    }
+    public float GetThrottleFalloff()
+    {
+        float percent = Mathf.Clamp(body.velocity.magnitude / maxSpeed, 0, 1);
+        float throttle = throttleFalloff.Evaluate(percent) * throttleAmount;
+        return throttle;
     }
 }
