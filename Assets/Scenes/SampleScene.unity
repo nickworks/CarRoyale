@@ -1592,7 +1592,7 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   maxSpeed: 10
-  throttleAmount: 64000
+  throttleAmount: 300
   frictionFalloff:
     serializedVersion: 2
     m_Curve:
@@ -1607,7 +1607,7 @@ MonoBehaviour:
       outWeight: 0.33333334
     - serializedVersion: 3
       time: 1
-      value: 0.2
+      value: 0
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -1617,6 +1617,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  airTorqueMultiplier: 40
   steering: {fileID: 1124242672}
   wheelMaxTurn: 20
   wheelSpacing: {x: 0.4, y: 0.75}

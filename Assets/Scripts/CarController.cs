@@ -112,50 +112,41 @@ public class CarController : MonoBehaviour {
     }
     public void ApplyWheelFriction()
     {
-        Vector3 stoppingForce = -body.velocity / 4;
-        Vector3 localAngularVelocity = transform.InverseTransformVector(body.angularVelocity);
-        float stoppingTorque = localAngularVelocity.y / 4;
-
-        ApplyWheelFriction(wheel1, stoppingForce, stoppingTorque);
-        ApplyWheelFriction(wheel2, stoppingForce, stoppingTorque);
-        ApplyWheelFriction(wheel3, stoppingForce, stoppingTorque);
-        ApplyWheelFriction(wheel4, stoppingForce, stoppingTorque);
+        ApplyWheelFriction(wheel1);
+        ApplyWheelFriction(wheel2);
+        ApplyWheelFriction(wheel3);
+        ApplyWheelFriction(wheel4);
     }
-    void ApplyWheelFriction(Transform tire, Vector3 stoppingForce, float stoppingTorque)
+    void ApplyWheelFriction(Transform tire)
     {
         // NO LONGITUDINAL FRICTION
 
         // LATERAL FRICTION:
-
-        Vector3 localVelocity = tire.InverseTransformDirection(body.velocity);
-
         // look at speed of tire (in world space?)
+        Vector3 localVelocity = tire.InverseTransformDirection(body.velocity);        
         // ratio = sidespeed / (sidespeed + forwardspeed)
-        float bottom = (localVelocity.x + localVelocity.z);
+        float bottom = Mathf.Abs(localVelocity.x) + Mathf.Abs(localVelocity.z);
         if (bottom == 0) return;
 
-        float ratio = localVelocity.x / bottom;
+        float ratio = Mathf.Abs(localVelocity.x / bottom);
         // (0 means the wheel is going forward, 1 means its going sideways)
         // slidefriction = curve(ratio) (values: 1 -> .2 | 0 -> 1)
-        float slidefriction = frictionFalloff.Evaluate(ratio);
+        float slideFriction = frictionFalloff.Evaluate(ratio);
 
         // NO SLIPPING DOWN SLOPES:
         // groundfriction = curve(groundnormal.z)
         // friction = slidefriction * groundfriction
-        float friction = slidefriction;
+        float friction = slideFriction;// * slideFriction;
         // impulse = constant * friction
         // apply to "wheel"
         // apply friction force aligned with center of mass
 
-        // find direction to apply torque-force:
-        Vector3 center = transform.position + body.centerOfMass;
-        Vector3 torqueDir = Vector3.Cross(transform.up, (center - tire.position).normalized);
-
-        // add stopping force and stopping torque-force:
-        Vector3 combinedForces = (stoppingTorque * torqueDir + stoppingForce);
-
+        Vector3 worldVelocityOfTire = body.GetPointVelocity(tire.position);
+        Vector3 impulse = -worldVelocityOfTire * friction;
         // try to stop spinning:
-        body.AddForceAtPosition(combinedForces * friction * Time.deltaTime, tire.position, ForceMode.Impulse);
+        body.AddForceAtPosition(impulse, tire.position, ForceMode.Acceleration);
+        
+        Debug.DrawRay(tire.position, impulse, Color.red);
     }
     void Raycast()
     {
@@ -210,9 +201,11 @@ public class CarController : MonoBehaviour {
             contactNormal = Vector3.zero;
         }
     }
-    public float GetThrottleFalloff()
+    public float GetThrottleFalloff(bool backwards = false)
     {
-        float percent = Mathf.Clamp(body.velocity.magnitude / maxSpeed, 0, 1);
+        float speed = body.velocity.magnitude * Vector3.Dot(body.velocity.normalized, transform.forward); // get forward speed (what about backward?)
+        if (backwards) speed = -speed;
+        float percent = Mathf.Clamp(speed / maxSpeed, 0, 1);
         float throttle = throttleFalloff.Evaluate(percent) * throttleAmount;
         return throttle;
     }
